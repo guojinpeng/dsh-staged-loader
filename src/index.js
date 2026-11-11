@@ -1,19 +1,18 @@
 import { readConfig } from './config.js';
 import { createStatusHandler } from './handler.js';
 import { readBundles, writeBundles } from './manifest.js';
-import { resolveDeferred, runStaging } from './stage.js';
+import { enabledNames, runStaging, selectStaged } from './stage.js';
 import { createStatusStore } from './status.js';
 
 export const name = 'guojinpeng/dsh-staged-loader';
-export const inject = ['pluginManager'];
+export const inject = ['pluginManager', 'profileContext'];
 
 /** Same-origin route the client card polls. */
 const ROUTE = '/guojinpeng/dsh-staged-loader/status';
 
 /**
- * Start the profile with its core bundles only, then enable the deferred
- * bundles after the boot composition settles, and write the core-only bundle
- * list back on exit so the next start is fast again.
+ * Enable the managed third-party bundles after the boot composition settles,
+ * and write the core-only bundle list back on exit so the next start is fast.
  * @param ctx - host plugin context.
  */
 export function apply(ctx) {
@@ -25,6 +24,8 @@ export function apply(ctx) {
 	const config = readConfig(ctx.logger);
 	const status = createStatusStore();
 	const staged = new Set();
+	/** Bundles this run owns; the exit hook removes exactly these. */
+	let planned = [];
 	let stopped = false;
 	let timer = null;
 
@@ -39,7 +40,11 @@ export function apply(ctx) {
 		timer = null;
 		await settle(ctx, config.waitForBootMs);
 		if (stopped) return;
-		const deferred = resolveDeferred(config, readBundles(dir));
+		const manager = ctx.get('pluginManager');
+		const rows = await manager.listBundles();
+		planned = selectStaged(config, rows);
+		const enabled = enabledNames(rows);
+		const deferred = planned.filter((name) => !enabled.has(name));
 		await runStaging({ ctx, deferred, config, status, staged, isStopped: () => stopped });
 	};
 
@@ -56,10 +61,11 @@ export function apply(ctx) {
 	ctx.effect(() => async () => {
 		stopped = true;
 		if (timer !== null) clearTimeout(timer);
-		if (staged.size === 0) return;
+		if (planned.length === 0) return;
 		try {
 			const bundles = readBundles(dir);
-			const next = bundles.filter((bundleName) => !staged.has(bundleName));
+			const owned = new Set(planned);
+			const next = bundles.filter((bundleName) => !owned.has(bundleName));
 			if (next.length !== bundles.length) writeBundles(dir, next);
 		} catch (error) {
 			ctx.logger?.warn?.('dsh-staged-loader: could not write the core-only bundle list', error);

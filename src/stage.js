@@ -13,15 +13,33 @@ function pause(ms) {
 }
 
 /**
- * Choose the bundles to enable after the page is ready.
- * An explicit `defer` list wins; otherwise every selected bundle outside the
- * core prefix is deferred, minus `keep` and this package.
+ * Choose the bundles the loader manages from the plugin manager inventory.
+ * A row counts when it is installed from the profile, is not a core bundle,
+ * is not this package, and is not listed in `keep`.
+ * An explicit `defer` list replaces the default rule.
  */
-export function resolveDeferred(config, selected) {
-	const chosen = new Set(selected);
-	if (config.defer.length > 0) return config.defer.filter((name) => chosen.has(name));
+export function selectStaged(config, rows) {
+	if (config.defer.length > 0) {
+		const installed = new Set(rows.filter((row) => row.installed).map((row) => row.name));
+		return config.defer.filter((name) => installed.has(name));
+	}
 	const keep = new Set(config.keep);
-	return selected.filter((name) => !name.startsWith(CORE_PREFIX) && name !== SELF && !keep.has(name));
+	return rows
+		.filter(
+			(row) =>
+				row.installed === true &&
+				row.availability === 'profile' &&
+				row.readOnlyReason === undefined &&
+				row.name !== SELF &&
+				!row.name.startsWith(CORE_PREFIX) &&
+				!keep.has(row.name),
+		)
+		.map((row) => row.name);
+}
+
+/** Bundle names that are already enabled, from the same inventory. */
+export function enabledNames(rows) {
+	return new Set(rows.filter((row) => row.enabled === true).map((row) => row.name));
 }
 
 /**
@@ -35,12 +53,11 @@ export async function runStaging({ ctx, deferred, config, status, staged, isStop
 		status.fail(new Error('the pluginManager service is unavailable'));
 		return;
 	}
+	status.begin(deferred);
 	if (deferred.length === 0) {
-		status.begin([]);
 		status.finishRun();
 		return;
 	}
-	status.begin(deferred);
 	let count = 0;
 	for (const name of deferred) {
 		if (isStopped()) break;
@@ -60,8 +77,6 @@ export async function runStaging({ ctx, deferred, config, status, staged, isStop
 			outcome = 'failed';
 			message = error instanceof Error ? error.message : String(error);
 		}
-		// Record the bundle on exit even after a failure: the next start
-		// retries it instead of loading it at boot again.
 		staged.add(name);
 		status.finish(name, outcome, Date.now() - started, message);
 		count += 1;

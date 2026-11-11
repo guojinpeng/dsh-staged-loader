@@ -44,12 +44,18 @@ dsh plugin add ./guojinpeng-dsh-staged-loader-0.1.0.tgz
 ## 工作方式
 
 - `apply` 等待 `startDelayMs`，再等 `loader.await()` 返回（启动期组合已稳定）。
-- 读取 profile 的 `package.json` → `dsh.profile.bundles`，算出需要延后的 bundle。
-- 逐个调用 `pluginManager.setBundleEnabled(name, true)`。运行期热组合，不需要重启。
-- 退出时 `ctx.effect` 的清理函数把已延后的 bundle 从 manifest 中移除。
+- 读取 `pluginManager.listBundles()`，选出本插件管理的 bundle：已安装、来自
+  profile、不是核心 `@deepseek-ai/*`、不是本插件、不在 `keep` 中。
+- 其中尚未启用的，逐个调用 `pluginManager.setBundleEnabled(name, true)`。
+  运行期热组合，不需要重启。
+- 退出时 `ctx.effect` 的清理函数把这些 bundle 从 `dsh.profile.bundles` 中移除。
+  下次启动只加载核心 bundle。
 
 插件不修改已安装的 DSH 代码，只用公开服务 `pluginManager`、`webServer`、
 `connection`、`profileContext`、`loader`。
+
+第一次启动时所有 bundle 都已启用，本插件不启用任何 bundle，只负责记录管理
+范围。退出后 manifest 变成核心列表，第二次启动开始变快。
 
 ## 配置
 
@@ -75,11 +81,11 @@ dsh plugin add ./guojinpeng-dsh-staged-loader-0.1.0.tgz
 | `waitForBootMs` | 等 `loader.await()` 的上限。超时后继续。 |
 | `batchSize` | 每启用几个 bundle 暂停一次。默认 2。 |
 | `batchPauseMs` | 批次之间的暂停。默认 200 ms。 |
-| `keep` | 不延后的 bundle 名。 |
-| `defer` | 显式指定延后的 bundle 名。非空时忽略默认规则。 |
+| `keep` | 不由本插件管理的 bundle 名。 |
+| `defer` | 显式指定本插件管理的 bundle 名。非空时忽略默认规则。 |
 
-默认规则：`dsh.profile.bundles` 中所有不以 `@deepseek-ai/` 开头、不是本插件、
-且不在 `keep` 中的 bundle 都延后。
+默认规则：已安装、来自 profile、不以 `@deepseek-ai/` 开头、不是本插件、
+不在 `keep` 中的 bundle 都由本插件管理。
 
 ## 状态接口
 

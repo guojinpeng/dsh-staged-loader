@@ -216,11 +216,14 @@ function apply(ctx) {
 	poll();
 }
 
+export const inject = [];
+
 export default {
 	apply,
+	inject,
 };
 
 window.__ModuleLoader__.load({
 	id: '@guojinpeng/dsh-staged-loader',
-	factory: () => ({ apply }),
+	factory: () => ({ apply, inject }),
 });

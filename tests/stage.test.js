@@ -1,23 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveDeferred, runStaging } from '../src/stage.js';
+import { enabledNames, runStaging, selectStaged } from '../src/stage.js';
 import { createStatusStore } from '../src/status.js';
 
 const config = (over) => ({ keep: [], defer: [], batchSize: 2, batchPauseMs: 0, ...over });
 
-test('resolveDeferred defers every non-core bundle by default', () => {
-	const selected = ['@deepseek-ai/dsh-base', 'dsh-ops', '@guojinpeng/dsh-staged-loader', 'billion-context'];
-	assert.deepEqual(resolveDeferred(config(), selected), ['dsh-ops', 'billion-context']);
+const rows = [
+	{ name: '@deepseek-ai/dsh-base', installed: true, availability: 'installation', enabled: true },
+	{ name: '@guojinpeng/dsh-staged-loader', installed: true, availability: 'profile', enabled: true },
+	{ name: 'dsh-ops', installed: true, availability: 'profile', enabled: false },
+	{ name: 'billion-context', installed: true, availability: 'profile', enabled: true },
+	{ name: 'dshmarket', installed: false, availability: 'missing', enabled: false },
+	{ name: 'dsh-plugin-manager', installed: true, availability: 'profile', enabled: true, readOnlyReason: 'management-required' },
+];
+
+test('selectStaged keeps profile bundles and drops core, self, read-only and missing rows', () => {
+	assert.deepEqual(selectStaged(config(), rows), ['dsh-ops', 'billion-context']);
 });
 
-test('resolveDeferred honours keep', () => {
-	const selected = ['@deepseek-ai/dsh-base', 'dsh-ops', 'billion-context'];
-	assert.deepEqual(resolveDeferred(config({ keep: ['billion-context'] }), selected), ['dsh-ops']);
+test('selectStaged honours keep', () => {
+	assert.deepEqual(selectStaged(config({ keep: ['billion-context'] }), rows), ['dsh-ops']);
 });
 
-test('resolveDeferred honours an explicit defer list', () => {
-	const selected = ['@deepseek-ai/dsh-base', 'dsh-ops', 'billion-context'];
-	assert.deepEqual(resolveDeferred(config({ defer: ['billion-context', 'not-installed'] }), selected), ['billion-context']);
+test('selectStaged honours an explicit defer list', () => {
+	assert.deepEqual(selectStaged(config({ defer: ['billion-context', 'not-installed'] }), rows), ['billion-context']);
+});
+
+test('enabledNames reads the enabled flag', () => {
+	const enabled = enabledNames(rows);
+	assert.equal(enabled.has('dsh-ops'), false);
+	assert.equal(enabled.has('billion-context'), true);
 });
 
 /** Build a context whose plugin manager records calls and answers from resultFor. */
@@ -67,11 +79,11 @@ test('runStaging keeps the warning and restart outcomes on the rows', async () =
 		staged: new Set(),
 		isStopped: () => false,
 	});
-	const rows = status.snapshot().items;
-	assert.equal(rows[0].state, 'ready');
-	assert.equal(rows[0].message, '2 warning(s)');
-	assert.equal(rows[1].state, 'restart');
-	assert.equal(rows[1].message, 'changed patch');
+	const items = status.snapshot().items;
+	assert.equal(items[0].state, 'ready');
+	assert.equal(items[0].message, '2 warning(s)');
+	assert.equal(items[1].state, 'restart');
+	assert.equal(items[1].message, 'changed patch');
 });
 
 test('runStaging records a failure and continues with the next bundle', async () => {
@@ -80,21 +92,19 @@ test('runStaging records a failure and continues with the next bundle', async ()
 		return {};
 	});
 	const status = createStatusStore();
-	const staged = new Set();
-	await runStaging({ ctx, deferred: ['dsh-ops', 'billion-context'], config: config(), status, staged, isStopped: () => false });
+	await runStaging({ ctx, deferred: ['dsh-ops', 'billion-context'], config: config(), status, staged: new Set(), isStopped: () => false });
 	assert.equal(calls.length, 2);
-	const rows = status.snapshot().items;
-	assert.equal(rows[0].state, 'failed');
-	assert.equal(rows[0].message, 'boom');
-	assert.equal(rows[1].state, 'ready');
-	assert.equal(staged.size, 2);
+	const items = status.snapshot().items;
+	assert.equal(items[0].state, 'failed');
+	assert.equal(items[0].message, 'boom');
+	assert.equal(items[1].state, 'ready');
 });
 
 test('runStaging stops between bundles when the host is shutting down', async () => {
 	const { ctx, calls } = context(() => ({}));
 	const status = createStatusStore();
 	let stop = false;
-	const ctxStopping = {
+	const stopping = {
 		get(name) {
 			if (name !== 'pluginManager') return undefined;
 			return {
@@ -106,7 +116,16 @@ test('runStaging stops between bundles when the host is shutting down', async ()
 			};
 		},
 	};
-	await runStaging({ ctx: ctxStopping, deferred: ['dsh-ops', 'billion-context'], config: config(), status, staged: new Set(), isStopped: () => stop });
+	await runStaging({ ctx: stopping, deferred: ['dsh-ops', 'billion-context'], config: config(), status, staged: new Set(), isStopped: () => stop });
 	assert.deepEqual(calls, [['dsh-ops', true]]);
 	void ctx;
+});
+
+test('runStaging finishes at once when nothing is deferred', async () => {
+	const { ctx, calls } = context(() => ({}));
+	const status = createStatusStore();
+	await runStaging({ ctx, deferred: [], config: config(), status, staged: new Set(), isStopped: () => false });
+	assert.equal(calls.length, 0);
+	assert.equal(status.snapshot().running, false);
+	assert.equal(status.snapshot().total, 0);
 });
