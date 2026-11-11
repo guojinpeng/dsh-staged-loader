@@ -1,0 +1,11 @@
+# dsh-staged-loader bundle patch: adds the staged loader to the profile.
+#
+# The loader defers the third-party bundles until the page is ready, then
+# enables them one by one. On exit it writes the core-only bundle list back,
+# so the next start is fast again.
+#
+# `id` is the plugin id used by the profile graph.
+# `name` is the package name, resolved from the profile node_modules.
+- insert:
+    - id: guojinpeng/dsh-staged-loader
+      name: '@guojinpeng/dsh-staged-loader'
