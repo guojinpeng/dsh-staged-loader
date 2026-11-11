@@ -35,7 +35,7 @@ dsh plugin add ./dsh-staged-loader
 
 ```bash
 npm pack
-dsh plugin add ./guojinpeng-dsh-staged-loader-0.1.0.tgz
+dsh plugin add ./guojinpeng-dsh-staged-loader-0.1.1.tgz
 ```
 
 安装后第一次启动仍是全量加载（manifest 里还是完整列表）。退出后 manifest
@@ -105,6 +105,24 @@ dsh plugin add ./guojinpeng-dsh-staged-loader-0.1.0.tgz
 
 `state` 取值：`pending`、`loading`、`ready`、`restart`、`failed`。
 接口与桌面端同源，走 `connection.requestRejection` 的鉴权。
+
+## 恢复
+
+插件改写 `dsh.profile.bundles` 之前，会把原文件复制到
+`<profile>/package.json.staged-loader-backup`。要恢复原来的 bundle 列表：
+
+1. 退出桌面端。
+2. 用备份文件覆盖 `<profile>/package.json`。
+3. 启动桌面端。
+
+也可以按需在插件页重新启用被移除的 bundle。
+
+## 客户端脚本限制
+
+客户端文件由 DSH 作为**普通脚本**在页面作用域执行，不是 ES 模块。
+文件里不能出现顶层 `import` 或 `export`，否则页面报
+`SyntaxError: Unexpected token 'export'`，插件加载失败。它只能通过
+`window.__ModuleLoader__.load({ id, factory })` 注册模块。
 
 ## 限制
 

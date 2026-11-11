@@ -1,6 +1,6 @@
 import { readConfig } from './config.js';
 import { createStatusHandler } from './handler.js';
-import { readBundles, writeBundles } from './manifest.js';
+import { backupManifest, readBundles, writeBundles } from './manifest.js';
 import { enabledNames, runStaging, selectStaged } from './stage.js';
 import { createStatusStore } from './status.js';
 
@@ -65,7 +65,10 @@ export function apply(ctx) {
 			const bundles = readBundles(dir);
 			const owned = new Set(planned);
 			const next = bundles.filter((bundleName) => !owned.has(bundleName));
-			if (next.length !== bundles.length) writeBundles(dir, next);
+			if (next.length !== bundles.length) {
+				backupManifest(dir);
+				writeBundles(dir, next);
+			}
 		} catch (error) {
 			ctx.logger?.warn?.('dsh-staged-loader: could not write the core-only bundle list', error);
 		}

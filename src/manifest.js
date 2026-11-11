@@ -1,9 +1,21 @@
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+/** Last manifest the loader changed, kept beside the live file for recovery. */
+export const BACKUP_FILE = 'package.json.staged-loader-backup';
 
 /** Absolute path of the profile manifest. */
 export function manifestFile(dir) {
 	return join(dir, 'package.json');
+}
+
+/** Copy the current manifest before the loader rewrites the bundle list. */
+export function backupManifest(dir) {
+	try {
+		copyFileSync(manifestFile(dir), join(dir, BACKUP_FILE));
+	} catch {
+		// A missing backup never blocks the write; the live file is still valid.
+	}
 }
 
 /** Read the profile manifest as plain JSON. */

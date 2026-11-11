@@ -1,6 +1,6 @@
 {
   "name": "@guojinpeng/dsh-staged-loader",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Start DSH with the core bundles only, then enable third-party bundles after the page is ready and show the progress in the bottom-right corner.",
   "license": "MIT",

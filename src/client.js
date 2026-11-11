@@ -216,12 +216,12 @@ function apply(ctx) {
 	poll();
 }
 
-export const inject = [];
-
-export default {
-	apply,
-	inject,
-};
+/**
+ * The client module loader evaluates this file as a classic script in page
+ * scope. Top-level `import` or `export` breaks that evaluation with a
+ * SyntaxError, so the module registers through __ModuleLoader__ only.
+ */
+const inject = [];
 
 window.__ModuleLoader__.load({
 	id: '@guojinpeng/dsh-staged-loader',
