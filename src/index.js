@@ -4,7 +4,6 @@ import { readBundles, writeBundles } from './manifest.js';
 import { enabledNames, runStaging, selectStaged } from './stage.js';
 import { createStatusStore } from './status.js';
 
-export const name = 'guojinpeng/dsh-staged-loader';
 export const inject = ['pluginManager', 'profileContext'];
 
 /** Same-origin route the client card polls. */
